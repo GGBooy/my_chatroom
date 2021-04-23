@@ -14,20 +14,20 @@ import (
 
 var serverAddr = "122.9.77.149:10086"
 var localAddr = ""
+var remoteAddr = ""
 
-
-
-func main(){
-	conn, err := greuse.Dial("tcp","0.0.0.0:0", serverAddr)
+func main() {
+	conn, err := greuse.Dial("tcp", "0.0.0.0:0", serverAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer conn.Close()
 	localAddr = conn.LocalAddr().String()
+	println("local address: " + localAddr)
 	linkStart(conn)
 }
 
-func linkStart(conn net.Conn)  {
+func linkStart(conn net.Conn) {
 	// read the other address from the server
 	buffer := make([]byte, 2048)
 	n, err := conn.Read(buffer)
@@ -35,24 +35,18 @@ func linkStart(conn net.Conn)  {
 		log.Print(err)
 		return
 	}
-	remoteAddr := string(buffer[:n])
+	remoteAddr = string(buffer[:n])
 	println("the other: " + remoteAddr)
 
 	// create another connection at the same port
-	nla, err := greuse.ResolveAddr("tcp", localAddr)
-	if err != nil {
-		log.Print(err)
-	}
-
-
 
 	var a int
 	_, _ = fmt.Scanf("%d", &a)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if a==1 {
-		_, err = DialTimeout("tcp", localAddr, remoteAddr, time.Duration(30)*time.Second)
+	if a == 1 {
+		_, err = DialTimeout("tcp", localAddr, remoteAddr, time.Duration(30)*time.Millisecond)
 		//go tryConn(conn, remoteAddr)
 		//ls, err := greuse.Listen("tcp", localAddr)
 		//if err != nil {
@@ -66,7 +60,11 @@ func linkStart(conn net.Conn)  {
 		http.HandleFunc("/ws", WebSocketHandleFunc)
 		log.Fatal(MyListenAndServe(localAddr, nil))
 
-	} else if a==2 {
+	} else if a == 2 {
+		nla, err := greuse.ResolveAddr("tcp", localAddr)
+		if err != nil {
+			log.Print(err)
+		}
 		var MyDialOpt = websocket.DialOptions{
 			HTTPClient: &http.Client{
 				Transport: &http.Transport{
@@ -87,11 +85,8 @@ func linkStart(conn net.Conn)  {
 			},
 		}
 
-
-
-
 		for i := 0; i < 10; i++ {
-			co, _, e := websocket.Dial(ctx, "ws://" + remoteAddr + "/ws", &MyDialOpt)
+			co, _, e := websocket.Dial(ctx, "ws://"+remoteAddr+"/ws", &MyDialOpt)
 			if e == nil {
 				defer co.Close(websocket.StatusInternalError, "内部错误！")
 				go Recv(co, ctx)
@@ -114,18 +109,17 @@ func WebSocketHandleFunc(w http.ResponseWriter, req *http.Request) {
 	Send(conn, req.Context())
 }
 
-type myHandler struct {}
-func (mh myHandler)ServeHTTP(w http.ResponseWriter, req *http.Request) {
+type myHandler struct{}
+
+func (mh myHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	WebSocketHandleFunc(w, req)
 }
-
 
 func MyListenAndServe(addr string, handler http.Handler) error {
 	server := &http.Server{Addr: addr, Handler: handler}
 	ls, _ := greuse.Listen("tcp", localAddr)
 	return server.Serve(ls)
 }
-
 
 // Added by myself
 func DialTimeout(network, laddr, raddr string, timeout time.Duration) (net.Conn, error) {
@@ -134,13 +128,12 @@ func DialTimeout(network, laddr, raddr string, timeout time.Duration) (net.Conn,
 		return nil, err
 	}
 	d := net.Dialer{
-		//Timeout: timeout,
+		Timeout:   timeout,
 		Control:   greuse.Control,
 		LocalAddr: nla,
 	}
 	return d.Dial(network, raddr)
 }
-
 
 func Send(c *websocket.Conn, ctx context.Context) {
 	for {
@@ -148,7 +141,7 @@ func Send(c *websocket.Conn, ctx context.Context) {
 		if err != nil {
 			panic(err)
 		}
-		time.Sleep(1*time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 
